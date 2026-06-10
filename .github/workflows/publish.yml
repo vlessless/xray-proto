@@ -111,6 +111,10 @@ jobs:
             echo "skipped=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Build package distributions
+        if: steps.git-push.outputs.skipped == 'false'
+        run: uv build
+
       - name: Create GitHub Release
         if: steps.git-push.outputs.skipped == 'false'
         uses: softprops/action-gh-release@v2
@@ -121,5 +125,8 @@ jobs:
             Automated gRPC stubs build for **xray-core** [${{ steps.xray-version.outputs.version }}](https://github.com/XTLS/Xray-core/releases/tag/${{ steps.xray-version.outputs.version }}).
           draft: false
           prerelease: false
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
