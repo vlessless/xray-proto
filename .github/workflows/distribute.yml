@@ -24,7 +24,6 @@ jobs:
         env:
           INPUT_TAG: ${{ github.event.inputs.version_tag }}
         run: |
-          # Если запуск произошел через триггер релиза, берем тег из контекста релиза
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           else
@@ -54,12 +53,12 @@ jobs:
       - name: Publish to GitHub Packages
         run: |
           echo "Configuring uv for GitHub Packages..."
-          # Формируем URL для репозитория пакетов текущего пользователя/организации
-          export UV_PUBLISH_URL="https://reg.pypi.whl.gh.vlessless.workers.dev/v2/vlessless/xray-proto"
-          # Используем встроенный системный токен для авторизации в реестре GitHub Packages
+          # Официальный рабочий эндпоинт GitHub Packages для Python/PyPI пакетов
+          export UV_PUBLISH_URL="https://maven.pkg.github.com/${{ github.repository }}"
+          
+          # Публикуем артефакты, авторизуясь через системный токен
           uv publish --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
 
       # === 2. ПУБЛИКАЦИЯ В ОФИЦИАЛЬНЫЙ PYPI ===
       - name: Publish to PyPI
-        # Специфичный экшен от PyPA, использующий безопасный доверенный обмен токенами (OIDC)
         uses: pypa/gh-action-pypi-publish@release/v1
