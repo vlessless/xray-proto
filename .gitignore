@@ -1,0 +1,7 @@
+.idea/
+.venv/
+__pycache__/
+*.pyc
+
+src/xray_proto/*
+!src/xray_proto/__init__.py

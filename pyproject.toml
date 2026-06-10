@@ -1,0 +1,23 @@
+[project]
+name = "xray-proto"
+version = "0.1.0"
+description = "Auto-generated native gRPC stubs and types for xray-core"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "vlessless", email = "vlessless@gmail.com"}
+]
+dependencies = [
+    "grpcio>=1.60.0",
+    "protobuf>=5.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "grpcio-tools>=1.65.0",
+    "mypy-protobuf>=3.6.0",
+]
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
