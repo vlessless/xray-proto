@@ -37,11 +37,22 @@ jobs:
         id: xray-version
         env:
           RAW_INPUT_VERSION: ${{ github.event.inputs.xray_version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$RAW_INPUT_VERSION" ]; then
-            LATEST_TAG=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r .tag_name)
+            echo "No version provided. Fetching latest release tag from GitHub API..."
+            
+            API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/XTLS/Xray-core/releases/latest)
+            LATEST_TAG=$(echo "$API_RESPONSE" | jq -r .tag_name)
+            
+            if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+              echo "Warning: GitHub API rate limited or failed. Falling back to git ls-remote..."
+              LATEST_TAG=$(git ls-remote --tags --sort='v:refname' https://github.com/XTLS/Xray-core.git | tail -n1 | awk -F'/' '{print $3}' | sed 's/\^{}//')
+            fi
+            
             echo "version=$LATEST_TAG" >> $GITHUB_OUTPUT
           else
+            echo "Using user-defined version: $RAW_INPUT_VERSION"
             echo "version=$RAW_INPUT_VERSION" >> $GITHUB_OUTPUT
           fi
 
@@ -92,7 +103,6 @@ jobs:
             git commit -m "chore: auto-compile stubs for xray-core $XRAY_VER (lib version $NEW_VER) [skip ci]"
             git tag "$NEW_VER"
             
-            # ИСПРАВЛЕНО: явно пушим текущий HEAD в удаленную ветку main
             git push origin HEAD:main
             git push origin "$NEW_VER"
             echo "skipped=false" >> $GITHUB_OUTPUT
@@ -102,7 +112,6 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        # Шаг выполнится только в том случае, если были сгенерированы новые изменения
         if: steps.git-push.outputs.skipped == 'false'
         uses: softprops/action-gh-release@v2
         with:
