@@ -41,15 +41,13 @@ jobs:
         run: |
           if [ -z "$RAW_INPUT_VERSION" ]; then
             echo "No version provided. Fetching latest release tag from GitHub API..."
-            
             API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/XTLS/Xray-core/releases/latest)
             LATEST_TAG=$(echo "$API_RESPONSE" | jq -r .tag_name)
             
             if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
-              echo "Warning: GitHub API rate limited or failed. Falling back to git ls-remote..."
+              echo "Warning: GitHub API rate limited. Falling back to git ls-remote..."
               LATEST_TAG=$(git ls-remote --tags --sort='v:refname' https://github.com/XTLS/Xray-core.git | tail -n1 | awk -F'/' '{print $3}' | sed 's/\^{}//')
             fi
-            
             echo "version=$LATEST_TAG" >> $GITHUB_OUTPUT
           else
             echo "Using user-defined version: $RAW_INPUT_VERSION"
@@ -71,6 +69,7 @@ jobs:
         id: lib-version
         run: |
           XRAY_RAW_VER=$(echo "${{ steps.xray-version.outputs.version }}" | sed 's/^v//')
+          # Ищем теги глобально во всем репозитории
           LATEST_PATCH=$(git tag -l "${XRAY_RAW_VER}.*" | sort -V | tail -n1 | awk -F. '{print $4}')
           
           if [ -z "$LATEST_PATCH" ]; then
@@ -78,7 +77,6 @@ jobs:
           else
             NEW_PATCH=$((LATEST_PATCH + 1))
           fi
-          
           echo "full_version=${XRAY_RAW_VER}.${NEW_PATCH}" >> $GITHUB_OUTPUT
 
       - name: Update Version in pyproject.toml
@@ -87,7 +85,7 @@ jobs:
           echo "Updating pyproject.toml version to $NEW_VER"
           sed -i -E 's/^version = "[^"]*"/version = "'"$NEW_VER"'"/' pyproject.toml
 
-      - name: Commit, Tag and Push changes
+      - name: Switch to Version Branch, Commit and Push
         id: git-push
         run: |
           git config --global user.name "github-actions[bot]"
@@ -95,6 +93,25 @@ jobs:
           
           NEW_VER="${{ steps.lib-version.outputs.full_version }}"
           XRAY_VER="${{ steps.xray-version.outputs.version }}"
+          BRANCH_NAME="release/$XRAY_VER"
+          
+          # Проверяем, существует ли уже такая ветка в удаленном репозитории
+          git fetch origin
+          if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
+            echo "Branch $BRANCH_NAME already exists. Checking out..."
+            git checkout "$BRANCH_NAME"
+            # Сбрасываем состояние ветки на актуальный main, чтобы перетереть старые стабы новыми
+            git reset --hard origin/main
+          else
+            echo "Creating a new clean branch: $BRANCH_NAME"
+            git checkout -b "$BRANCH_NAME"
+          fi
+          
+          # Снова накатываем изменения, которые могли слететь при переключении веток
+          # (скрипт компиляции и сед отработали в рабочей директории, файлы на месте)
+          sed -i -E 's/^version = "[^"]*"/version = "'"$NEW_VER"'"/' pyproject.toml
+          chmod +x ./scripts/compile.sh
+          uv run ./scripts/compile.sh /tmp/xray-core
           
           git add pyproject.toml
           git add -f src/xray_proto/
@@ -103,11 +120,12 @@ jobs:
             git commit -m "chore: auto-compile stubs for xray-core $XRAY_VER (lib version $NEW_VER) [skip ci]"
             git tag "$NEW_VER"
             
-            git push origin HEAD:main
+            # Пушим строго в ветку релиза и отправляем тег
+            git push origin HEAD:"refs/heads/$BRANCH_NAME" --force
             git push origin "$NEW_VER"
             echo "skipped=false" >> $GITHUB_OUTPUT
           else
-            echo "No changes detected. Stubs for this version are already up to date."
+            echo "No changes detected for this build."
             echo "skipped=true" >> $GITHUB_OUTPUT
           fi
 
