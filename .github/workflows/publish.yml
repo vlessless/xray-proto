@@ -1,0 +1,115 @@
+name: Compile and Release gRPC Stubs
+
+on:
+  workflow_dispatch:
+    inputs:
+      xray_version:
+        description: 'Xray version to compile (e.g., v24.11.30). Leave empty for latest stable.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout library repository
+        uses: actions/checkout:v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install sync dependencies (dev group)
+        run: uv sync --group dev
+
+      - name: Determine Xray Version
+        id: xray-version
+        env:
+          RAW_INPUT_VERSION: ${{ github.event.inputs.xray_version }}
+        run: |
+          if [ -z "$RAW_INPUT_VERSION" ]; then
+            LATEST_TAG=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r .tag_name)
+            echo "version=$LATEST_TAG" >> $GITHUB_OUTPUT
+          else
+            echo "version=$RAW_INPUT_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Clone Xray-core source
+        run: |
+          XRAY_TAG="${{ steps.xray-version.outputs.version }}"
+          echo "Cloning Xray-core at tag: $XRAY_TAG"
+          git clone --depth 1 --branch "$XRAY_TAG" https://github.com/XTLS/Xray-core.git /tmp/xray-core
+
+      - name: Run compilation script
+        run: |
+          chmod +x ./scripts/compile.sh
+          uv run ./scripts/compile.sh /tmp/xray-core
+
+      - name: Calculate New Library Version
+        id: lib-version
+        run: |
+          XRAY_RAW_VER=$(echo "${{ steps.xray-version.outputs.version }}" | sed 's/^v//')
+          LATEST_PATCH=$(git tag -l "${XRAY_RAW_VER}.*" | sort -V | tail -n1 | awk -F. '{print $4}')
+          
+          if [ -z "$LATEST_PATCH" ]; then
+            NEW_PATCH="0"
+          else
+            NEW_PATCH=$((LATEST_PATCH + 1))
+          fi
+          
+          echo "full_version=${XRAY_RAW_VER}.${NEW_PATCH}" >> $GITHUB_OUTPUT
+
+      - name: Update Version in pyproject.toml
+        run: |
+          NEW_VER="${{ steps.lib-version.outputs.full_version }}"
+          echo "Updating pyproject.toml version to $NEW_VER"
+          sed -i -E 's/^version = "[^"]*"/version = "'"$NEW_VER"'"/' pyproject.toml
+
+      - name: Commit, Tag and Push changes
+        id: git-push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          NEW_VER="${{ steps.lib-version.outputs.full_version }}"
+          XRAY_VER="${{ steps.xray-version.outputs.version }}"
+          
+          git add pyproject.toml
+          git add -f src/xray_proto/
+          
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore: auto-compile stubs for xray-core $XRAY_VER (lib version $NEW_VER) [skip ci]"
+            git tag "$NEW_VER"
+            
+            git push origin main
+            git push origin "$NEW_VER"
+            echo "skipped=false" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected. Stubs for this version are already up to date."
+            echo "skipped=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        # Шаг выполнится только в том случае, если были сгенерированы новые изменения
+        if: steps.git-push.outputs.skipped == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.lib-version.outputs.full_version }}
+          name: Release ${{ steps.lib-version.outputs.full_version }}
+          body: |
+            Automated gRPC stubs build for **xray-core** [${{ steps.xray-version.outputs.version }}](https://github.com/XTLS/Xray-core/releases/tag/${{ steps.xray-version.outputs.version }}).
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
