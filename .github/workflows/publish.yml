@@ -92,7 +92,8 @@ jobs:
             git commit -m "chore: auto-compile stubs for xray-core $XRAY_VER (lib version $NEW_VER) [skip ci]"
             git tag "$NEW_VER"
             
-            git push origin main
+            # ИСПРАВЛЕНО: явно пушим текущий HEAD в удаленную ветку main
+            git push origin HEAD:main
             git push origin "$NEW_VER"
             echo "skipped=false" >> $GITHUB_OUTPUT
           else
