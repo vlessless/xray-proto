@@ -95,18 +95,23 @@ jobs:
             XRAY_VER="${{ steps.xray-version.outputs.version }}"
             BRANCH_NAME="release/$XRAY_VER"
             
-            # ИСПРАВЛЕНО: сбрасываем локальные изменения в pyproject.toml,
-            # чтобы Git разрешил сделать checkout без конфликтов.
+            # Очищаем рабочую директорию от локальных изменений
             git reset --hard HEAD
             
-            git fetch origin
+            # ИСПРАВЛЕНО: Просто качаем изменения с сервера. 
+            # Это безопасно обновит указатель origin/master без трогания активной локальной ветки.
+            git fetch origin master
+            
             if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
               echo "Branch $BRANCH_NAME already exists. Checking out..."
               git checkout "$BRANCH_NAME"
-              git reset --hard origin/main
+              # Сбрасываем состояние релизной ветки на чистый master из upstream
+              git reset --hard origin/master
             else
               echo "Creating a new clean branch: $BRANCH_NAME"
               git checkout -b "$BRANCH_NAME"
+              # Гарантируем, что новая ветка создана на базе актуального master
+              git reset --hard origin/master
             fi
             
             # Накатываем изменения версии и генерируем стабы внутри целевой ветки
