@@ -88,46 +88,46 @@ jobs:
       - name: Switch to Version Branch, Commit and Push
         id: git-push
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          NEW_VER="${{ steps.lib-version.outputs.full_version }}"
-          XRAY_VER="${{ steps.xray-version.outputs.version }}"
-          BRANCH_NAME="release/$XRAY_VER"
-          
-          # Проверяем, существует ли уже такая ветка в удаленном репозитории
-          git fetch origin
-          if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
-            echo "Branch $BRANCH_NAME already exists. Checking out..."
-            git checkout "$BRANCH_NAME"
-            # Сбрасываем состояние ветки на актуальный main, чтобы перетереть старые стабы новыми
-            git reset --hard origin/main
-          else
-            echo "Creating a new clean branch: $BRANCH_NAME"
-            git checkout -b "$BRANCH_NAME"
-          fi
-          
-          # Снова накатываем изменения, которые могли слететь при переключении веток
-          # (скрипт компиляции и сед отработали в рабочей директории, файлы на месте)
-          sed -i -E 's/^version = "[^"]*"/version = "'"$NEW_VER"'"/' pyproject.toml
-          chmod +x ./scripts/compile.sh
-          uv run ./scripts/compile.sh /tmp/xray-core
-          
-          git add pyproject.toml
-          git add -f src/xray_proto/
-          
-          if ! git diff-index --quiet HEAD; then
-            git commit -m "chore: auto-compile stubs for xray-core $XRAY_VER (lib version $NEW_VER) [skip ci]"
-            git tag "$NEW_VER"
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
             
-            # Пушим строго в ветку релиза и отправляем тег
-            git push origin HEAD:"refs/heads/$BRANCH_NAME" --force
-            git push origin "$NEW_VER"
-            echo "skipped=false" >> $GITHUB_OUTPUT
-          else
-            echo "No changes detected for this build."
-            echo "skipped=true" >> $GITHUB_OUTPUT
-          fi
+            NEW_VER="${{ steps.lib-version.outputs.full_version }}"
+            XRAY_VER="${{ steps.xray-version.outputs.version }}"
+            BRANCH_NAME="release/$XRAY_VER"
+            
+            # ИСПРАВЛЕНО: сбрасываем локальные изменения в pyproject.toml,
+            # чтобы Git разрешил сделать checkout без конфликтов.
+            git reset --hard HEAD
+            
+            git fetch origin
+            if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
+              echo "Branch $BRANCH_NAME already exists. Checking out..."
+              git checkout "$BRANCH_NAME"
+              git reset --hard origin/main
+            else
+              echo "Creating a new clean branch: $BRANCH_NAME"
+              git checkout -b "$BRANCH_NAME"
+            fi
+            
+            # Накатываем изменения версии и генерируем стабы внутри целевой ветки
+            sed -i -E 's/^version = "[^"]*"/version = "'"$NEW_VER"'"/' pyproject.toml
+            chmod +x ./scripts/compile.sh
+            uv run ./scripts/compile.sh /tmp/xray-core
+            
+            git add pyproject.toml
+            git add -f src/xray_proto/
+            
+            if ! git diff-index --quiet HEAD; then
+              git commit -m "chore: auto-compile stubs for xray-core $XRAY_VER (lib version $NEW_VER) [skip ci]"
+              git tag "$NEW_VER"
+            
+              git push origin HEAD:"refs/heads/$BRANCH_NAME" --force
+              git push origin "$NEW_VER"
+              echo "skipped=false" >> $GITHUB_OUTPUT
+            else
+              echo "No changes detected for this build."
+              echo "skipped=true" >> $GITHUB_OUTPUT
+            fi
 
       - name: Build package distributions
         if: steps.git-push.outputs.skipped == 'false'
