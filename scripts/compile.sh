@@ -45,16 +45,23 @@ find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 ! -name '__init__.py' -exec rm -rf {}
 echo "Compiling xray-core protobuf definitions..."
 cd "$XRAY_SRC_DIR"
 
-# 5. Run compilation
-# Используем напрямую python3, так как контекст окружения uv run уже проброшен сверху из Workflow
+TARGET_DIRS=$(find . -maxdepth 1 -type d ! -name "." ! -name ".*" ! -name "vendor" | sed 's|^\./||')
+PROTO_FILES=$(find $TARGET_DIRS -name "*.proto" 2>/dev/null || true)
+
+if [ -z "$PROTO_FILES" ]; then
+    echo "Error: No .proto files found in target directories." >&2
+    exit 1
+fi
+
+# RUN COMPILATION
+# We explicitly set include paths and plugin behavior to align stub compilation targets
 python3 -m grpc_tools.protoc \
     -I . \
     --python_out="$OUTPUT_DIR" \
     --grpc_python_out="$OUTPUT_DIR" \
     --mypy_out="$OUTPUT_DIR" \
     --mypy_grpc_out="$OUTPUT_DIR" \
-    $(find . -name "*.proto")
-
+    $PROTO_FILES
 # 6. Post-processing: Recursively create __init__.py files in all generated subdirectories
 echo "Generating __init__.py files for package structure..."
 find "$OUTPUT_DIR" -type d | while read -r dir; do

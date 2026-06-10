@@ -1,14 +1,33 @@
 # -*- coding: utf-8 -*-
-"""Auto-generated gRPC bindings for xray-core."""
+"""Auto-generated gRPC bindings for xray-core with absolute package prefix support."""
 
 import sys
-from pathlib import Path
 
-# Получаем абсолютный путь к директории src/xray_proto на машине
-GENERATED_ROOT = str(Path(__file__).parent.resolve())
+# Define the root namespace under which this library is installed
+PACKAGE_PREFIX = "xray_proto"
 
-# Добавляем этот путь в начало списка поиска модулей Python (sys.path).
-# Это позволяет интерпретатору находить папки 'app', 'common' и др.
-# напрямую, решая проблему ModuleNotFoundError в автогенерированном коде.
-if GENERATED_ROOT not in sys.path:
-    sys.path.insert(0, GENERATED_ROOT)
+# List of all top-level packages generated from the Xray-core source tree
+XRAY_MODULES = [
+    "app",
+    "common",
+    "main",
+    "proxy",
+    "transport",
+]
+
+# Aliasing mechanism via sys.modules to guarantee that internal relative imports
+# mapped by protoc (e.g., 'from app.proxyman ...') resolve down cleanly to the
+# absolute installation target namespace (e.g., 'xray_proto.app.proxyman ...')
+for module_name in XRAY_MODULES:
+    target_alias = f"{PACKAGE_PREFIX}.{module_name}"
+
+    # Inject the alias into the global runtime module cache if it's missing
+    if module_name not in sys.modules:
+        try:
+            # Dynamically import the absolute package to boot up its namespace
+            __import__(target_alias)
+            # Route the plain short-name requests directly to our prefixed package instance
+            sys.modules[module_name] = sys.modules[target_alias]
+        except ImportError:
+            # Fail silently during intermediate build states or empty initializations
+            pass
