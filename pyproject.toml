@@ -1,6 +1,6 @@
 [project]
 name = "xray-proto"
-version = "0.1.0"
+version = "26.3.27.0"
 description = "Auto-generated native gRPC stubs and types for xray-core"
 readme = "README.md"
 requires-python = ">=3.12"
