@@ -10,7 +10,7 @@ PACKAGE_PREFIX = "xray_proto"
 XRAY_MODULES = [
     "app",
     "common",
-    "main",
+    "core",
     "proxy",
     "transport",
 ]
